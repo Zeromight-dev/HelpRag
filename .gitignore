@@ -1,0 +1,13 @@
+# Backend
+Backend/.env
+Backend/__pycache__/
+Backend/*.pyc
+
+# Frontend
+Frontend/node_modules/
+Frontend/.next/
+Frontend/.env.local
+
+# General
+.DS_Store
+*.log
