@@ -24,7 +24,7 @@ export interface DiagnosisResult {
   timestamp: string
 }
 
-export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "helprag-production.up.railway.app"
 
 export async function submitScan(
   image: File,
