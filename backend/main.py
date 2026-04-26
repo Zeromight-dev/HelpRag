@@ -1,46 +1,49 @@
 """
 HelpRag FastAPI Backend
-Connects to Groq API for medical image analysis with demographic bias detection.
+Connects to Gemini API for medical image analysis with demographic bias detection.
+Uses: google-genai (new SDK) with gemini-2.0-flash
 """
+from dotenv import load_dotenv
+load_dotenv()
 
 import os
-import base64
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from groq import Groq
+from google import genai
+from google.genai import types
 
 # ── App Setup ────────────────────────────────────────────────────────────────
 
 app = FastAPI(
     title="HelpRag API",
-    description="AI diagnostic bias detection backend powered by Groq",
-    version="1.0.0",
+    description="AI diagnostic bias detection backend powered by Google Gemini",
+    version="3.0.0",
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://192.168.137.1:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ── Groq Client ──────────────────────────────────────────────────────────────
+# ── Gemini Client ─────────────────────────────────────────────────────────────
 
-def get_groq_client() -> Groq:
-    api_key = os.environ.get("GROQ_API_KEY")
+def get_gemini_client() -> genai.Client:
+    api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         raise HTTPException(
             status_code=500,
-            detail="GROQ_API_KEY environment variable not set."
+            detail="GEMINI_API_KEY not set. Get your free key at https://aistudio.google.com"
         )
-    return Groq(api_key=api_key)
+    return genai.Client(api_key=api_key)
 
 # ── Bias Research Baselines ──────────────────────────────────────────────────
 # Source: Daneshjou et al., Nature Medicine 2024; Seyyed-Kalantari et al., 2021
@@ -138,6 +141,7 @@ class DiagnosisResult(BaseModel):
     model_version: str
     analysis_time_ms: int
     timestamp: str
+    model_config = {"protected_namespaces": ()}
 
 # ── Scan Endpoint ─────────────────────────────────────────────────────────────
 
@@ -155,7 +159,7 @@ async def run_scan(
     if scan_type not in BIAS_BASELINES:
         raise HTTPException(status_code=400, detail=f"Unknown scan_type: {scan_type}")
     if fitzpatrick not in BIAS_BASELINES[scan_type]:
-        raise HTTPException(status_code=400, detail=f"fitzpatrick must be 1-6")
+        raise HTTPException(status_code=400, detail="fitzpatrick must be 1-6")
 
     image_bytes = await image.read()
     if len(image_bytes) > 50 * 1024 * 1024:
@@ -165,10 +169,9 @@ async def run_scan(
     if content_type not in ("image/jpeg", "image/png", "image/gif", "image/webp"):
         content_type = "image/jpeg"
 
-    b64_image = base64.b64encode(image_bytes).decode("utf-8")
-
     fitz_label = FITZPATRICK_LABELS.get(fitzpatrick, f"Type {fitzpatrick}")
     scan_label = SCAN_TYPE_LABELS.get(scan_type, scan_type)
+
     demo_ctx = f"Fitzpatrick {fitz_label}"
     if age:
         demo_ctx += f", Age {age}"
@@ -177,47 +180,45 @@ async def run_scan(
     if localization:
         demo_ctx += f", Lesion location: {localization}"
 
-    system_prompt = """You are an expert medical imaging AI assistant specialized in diagnostic radiology and dermatology.
-Analyze the provided medical image and return your findings as valid JSON only — no markdown fences, no explanation outside JSON.
+    # ── Build prompt ──────────────────────────────────────────────────────────
+    prompt = (
+        f"You are an expert medical imaging AI assistant specialized in diagnostic radiology and dermatology. "
+        f"Analyze the provided {scan_label} for a patient: {demo_ctx}. "
+        f"Return ONLY a valid JSON object with exactly this structure (no markdown, no extra text): "
+        f'{{"condition": "primary condition or finding", '
+        f'"finding_detected": true or false, '
+        f'"confidence": number 0-100, '
+        f'"diagnosis_summary": "1-2 sentence clinical summary", '
+        f'"key_observations": ["2-4 key visual observations"], '
+        f'"recommendations": ["1-3 clinical recommendations"]}}'
+    )
 
-Return exactly this JSON structure:
-{
-  "condition": "primary condition or finding (e.g. Melanoma, Pneumonia, No finding)",
-  "finding_detected": true or false,
-  "confidence": number between 0 and 100,
-  "diagnosis_summary": "1-2 sentence clinical summary",
-  "key_observations": ["2-4 key visual observations from the image"],
-  "recommendations": ["1-3 clinical recommendations"]
-}"""
-
-    user_prompt = f"""Analyze this {scan_label} for a patient: {demo_ctx}.
-Provide clinical diagnosis and confidence score. Return only valid JSON."""
-
-    client = get_groq_client()
-
+    # ── Call Gemini (new google-genai SDK) ────────────────────────────────────
     try:
-        response = client.chat.completions.create(
-            model="meta-llama/llama-4-scout-17b-16e-instruct",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": f"data:{content_type};base64,{b64_image}"}
-                        },
-                        {"type": "text", "text": user_prompt}
-                    ]
-                }
-            ],
-            temperature=0.1,
-            max_tokens=1024,
-        )
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Groq API error: {str(e)}")
+        client = get_gemini_client()
 
-    raw_text = response.choices[0].message.content.strip()
+        image_part = types.Part.from_bytes(
+            data=image_bytes,
+            mime_type=content_type,
+        )
+
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[image_part, prompt],
+            config=types.GenerateContentConfig(
+                temperature=0.1,
+                max_output_tokens=1024,
+                response_mime_type="application/json",
+            ),
+        )
+        raw_text = response.text.strip()
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Gemini API error: {str(e)}")
+
+    # ── Parse JSON ────────────────────────────────────────────────────────────
     if raw_text.startswith("```"):
         parts = raw_text.split("```")
         raw_text = parts[1] if len(parts) > 1 else raw_text
@@ -228,20 +229,20 @@ Provide clinical diagnosis and confidence score. Return only valid JSON."""
     try:
         llm_data = json.loads(raw_text)
     except json.JSONDecodeError:
-        raise HTTPException(status_code=502, detail=f"LLM response parse error: {raw_text[:300]}")
+        raise HTTPException(status_code=502, detail=f"Gemini response parse error: {raw_text[:300]}")
 
-    condition = llm_data.get("condition", "Unknown")
-    finding_detected = bool(llm_data.get("finding_detected", False))
-    raw_confidence = float(llm_data.get("confidence", 85))
-    diagnosis_summary = llm_data.get("diagnosis_summary", "Analysis complete.")
-    key_observations = llm_data.get("key_observations", [])
+    condition           = llm_data.get("condition", "Unknown")
+    finding_detected    = bool(llm_data.get("finding_detected", False))
+    raw_confidence      = float(llm_data.get("confidence", 85))
+    diagnosis_summary   = llm_data.get("diagnosis_summary", "Analysis complete.")
+    key_observations    = llm_data.get("key_observations", [])
     llm_recommendations = llm_data.get("recommendations", [])
 
-    # Bias evaluation
-    baseline_data = BIAS_BASELINES[scan_type][fitzpatrick]
+    # ── Bias Evaluation ───────────────────────────────────────────────────────
+    baseline_data       = BIAS_BASELINES[scan_type][fitzpatrick]
     baseline_confidence = float(baseline_data["baseline"])
-    threshold = float(baseline_data["threshold"])
-    bias_risk_level = baseline_data["risk"]
+    threshold           = float(baseline_data["threshold"])
+    bias_risk_level     = baseline_data["risk"]
 
     adjusted_confidence = raw_confidence
     if bias_risk_level == "high":
@@ -299,15 +300,15 @@ Provide clinical diagnosis and confidence score. Return only valid JSON."""
         confidence_deviation=confidence_deviation,
         bias_explanation=bias_explanation,
         recommendations=all_recommendations,
-        model_version="HelpRag v2.5.0 / llama-4-scout",
+        model_version="HelpRag v3.0.0 / gemini-2.0-flash",
         analysis_time_ms=elapsed_ms,
-        timestamp=datetime.utcnow().isoformat() + "Z",
+        timestamp=datetime.now(timezone.utc).isoformat() + "Z",
     )
 
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "version": "1.0.0"}
+    return {"status": "ok", "version": "3.0.0", "model": "gemini-2.0-flash"}
 
 
 @app.get("/baselines")
