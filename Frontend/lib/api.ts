@@ -24,7 +24,7 @@ export interface DiagnosisResult {
   timestamp: string
 }
 
-export const API_BASE = "helprag-production.up.railway.app"
+export const API_BASE = "https://helprag-production.up.railway.app"
 
 export async function submitScan(
   image: File,
