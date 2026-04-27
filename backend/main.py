@@ -226,7 +226,7 @@ async def run_scan(
         )
 
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-3.1-pro",
             contents=[image_part, prompt],
             config=types.GenerateContentConfig(
                 temperature=0.1,
@@ -323,7 +323,7 @@ async def run_scan(
         confidence_deviation=confidence_deviation,
         bias_explanation=bias_explanation,
         recommendations=all_recommendations,
-        model_version="PrismDX v3.0.0 / gemini-2.0-flash",
+        model_version="PrismDX v3.0.0 / gemini-2.5-flash",
         analysis_time_ms=elapsed_ms,
         timestamp=datetime.now(timezone.utc).isoformat() + "Z",
     )
