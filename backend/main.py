@@ -1,7 +1,7 @@
 """
 PrismDX FastAPI Backend
 Connects to Gemini API for medical image analysis with demographic bias detection.
-Uses: google-genai (new SDK) with gemini-2.0-flash
+Uses: google-genai (new SDK) with gemini-2.0-flash and automatic fallback.
 """
 from dotenv import load_dotenv
 load_dotenv()
@@ -29,14 +29,18 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-    "http://localhost:3000",
-    "https://prismdx-2026.web.app",
-    "https://prismdx-2026.firebaseapp.com",
-],
+        "http://localhost:3000",
+        "https://prismdx-2026.web.app",
+        "https://prismdx-2026.firebaseapp.com",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ── Model Configuration ───────────────────────────────────────────────────────
+PRIMARY_MODEL = "gemini-2.5-pro" 
+FALLBACK_MODEL = "gemini-2.5-flash"
 
 # ── Gemini Client ─────────────────────────────────────────────────────────────
 
@@ -175,17 +179,43 @@ async def run_scan(
 
     fitz_label = FITZPATRICK_LABELS.get(fitzpatrick, f"Type {fitzpatrick}")
     scan_label = SCAN_TYPE_LABELS.get(scan_type, scan_type)
+    
+    client = get_gemini_client()
 
-    # ── Image Validation ─────────────────────────────────────────────────────
-    try:
-        client = get_gemini_client()
-        validation_part = types.Part.from_bytes(data=image_bytes, mime_type=content_type)
-        validation_response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=[validation_part, f"Is this a genuine medical image of type '{scan_label}'? Reply only YES or NO."],
-            config=types.GenerateContentConfig(temperature=0.1, max_output_tokens=10),
+    # ── Internal Helper for Generation ──
+    def call_gemini(model_name: str, content_parts: list, response_schema=None):
+        config_args = {
+            "temperature": 0.1,
+            "max_output_tokens": 1024,
+        }
+        if response_schema:
+            config_args["response_mime_type"] = "application/json"
+            # config_args["response_schema"] = response_schema # Uncomment if SDK supports it directly
+            
+        return client.models.generate_content(
+            model=model_name,
+            contents=content_parts,
+            config=types.GenerateContentConfig(**config_args),
         )
-        if validation_response.text.strip().upper().startswith("NO"):
+
+    # ── Image Validation with Fallback ──
+    validation_passed = True
+    active_model = PRIMARY_MODEL
+    
+    try:
+        validation_part = types.Part.from_bytes(data=image_bytes, mime_type=content_type)
+        v_prompt = f"Is this a genuine medical image of type '{scan_label}'? Reply only YES or NO."
+        
+        try:
+            v_res = call_gemini(PRIMARY_MODEL, [validation_part, v_prompt])
+        except Exception as e:
+            if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+                v_res = call_gemini(FALLBACK_MODEL, [validation_part, v_prompt])
+                active_model = FALLBACK_MODEL
+            else:
+                raise e
+        
+        if v_res.text.strip().upper().startswith("NO"):
             raise HTTPException(
                 status_code=422,
                 detail=f"Image does not appear to be a valid {scan_label}. Please upload a genuine medical image."
@@ -195,114 +225,72 @@ async def run_scan(
     except Exception:
         pass
 
+    # ── Main Analysis with Fallback ──
     demo_ctx = f"Fitzpatrick {fitz_label}"
-    if age:
-        demo_ctx += f", Age {age}"
-    if gender:
-        demo_ctx += f", Gender: {gender}"
-    if localization:
-        demo_ctx += f", Lesion location: {localization}"
+    if age: demo_ctx += f", Age {age}"
+    if gender: demo_ctx += f", Gender: {gender}"
+    if localization: demo_ctx += f", Lesion location: {localization}"
 
-    # ── Build prompt ──────────────────────────────────────────────────────────
     prompt = (
         f"You are an expert medical imaging AI assistant specialized in diagnostic radiology and dermatology. "
         f"Analyze the provided {scan_label} for a patient: {demo_ctx}. "
-        f"Return ONLY a valid JSON object with exactly this structure (no markdown, no extra text): "
-        f'{{"condition": "primary condition or finding", '
-        f'"finding_detected": true or false, '
-        f'"confidence": number 0-100, '
-        f'"diagnosis_summary": "1-2 sentence clinical summary", '
-        f'"key_observations": ["2-4 key visual observations"], '
-        f'"recommendations": ["1-3 clinical recommendations"]}}'
+        f"Return ONLY a valid JSON object with exactly this structure: "
+        f'{{"condition": "primary condition", "finding_detected": true, "confidence": 85, '
+        f'"diagnosis_summary": "summary text", "key_observations": ["obs1"], "recommendations": ["rec1"]}}'
     )
 
-    # ── Call Gemini (new google-genai SDK) ────────────────────────────────────
     try:
-        client = get_gemini_client()
-
-        image_part = types.Part.from_bytes(
-            data=image_bytes,
-            mime_type=content_type,
-        )
-
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=[image_part, prompt],
-            config=types.GenerateContentConfig(
-                temperature=0.1,
-                max_output_tokens=1024,
-                response_mime_type="application/json",
-            ),
-        )
+        image_part = types.Part.from_bytes(data=image_bytes, mime_type=content_type)
+        
+        try:
+            response = call_gemini(PRIMARY_MODEL, [image_part, prompt], response_schema=True)
+            active_model = PRIMARY_MODEL
+        except Exception as e:
+            if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+                response = call_gemini(FALLBACK_MODEL, [image_part, prompt], response_schema=True)
+                active_model = FALLBACK_MODEL
+            else:
+                raise e
+                
         raw_text = response.text.strip()
-
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Gemini API error: {str(e)}")
 
-    # ── Parse JSON ────────────────────────────────────────────────────────────
-    if raw_text.startswith("```"):
-        parts = raw_text.split("```")
-        raw_text = parts[1] if len(parts) > 1 else raw_text
-        if raw_text.startswith("json"):
-            raw_text = raw_text[4:]
-    raw_text = raw_text.strip()
-
+    # ── Parse JSON ──
     try:
+        if "```json" in raw_text:
+            raw_text = raw_text.split("```json")[1].split("```")[0].strip()
+        elif "```" in raw_text:
+            raw_text = raw_text.split("```")[1].strip()
         llm_data = json.loads(raw_text)
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=502, detail=f"Gemini response parse error: {raw_text[:300]}")
+    except Exception:
+        raise HTTPException(status_code=502, detail="Failed to parse AI response.")
 
-    condition           = llm_data.get("condition", "Unknown")
-    finding_detected    = bool(llm_data.get("finding_detected", False))
-    raw_confidence      = float(llm_data.get("confidence", 85))
-    diagnosis_summary   = llm_data.get("diagnosis_summary", "Analysis complete.")
-    key_observations    = llm_data.get("key_observations", [])
-    llm_recommendations = llm_data.get("recommendations", [])
+    # ── Bias Evaluation Logic ──
+    raw_confidence = float(llm_data.get("confidence", 85))
+    baseline_data = BIAS_BASELINES[scan_type][fitzpatrick]
+    baseline_conf = float(baseline_data["baseline"])
+    threshold = float(baseline_data["threshold"])
+    risk_level = baseline_data["risk"]
 
-    # ── Bias Evaluation ───────────────────────────────────────────────────────
-    baseline_data       = BIAS_BASELINES[scan_type][fitzpatrick]
-    baseline_confidence = float(baseline_data["baseline"])
-    threshold           = float(baseline_data["threshold"])
-    bias_risk_level     = baseline_data["risk"]
+    # Adjust confidence based on known research disparities
+    adj_confidence = raw_confidence
+    if risk_level == "high":
+        adj_confidence = min(raw_confidence, baseline_conf + 2)
+    elif risk_level == "moderate":
+        adj_confidence = min(raw_confidence, baseline_conf + 5)
 
-    adjusted_confidence = raw_confidence
-    if bias_risk_level == "high":
-        adjusted_confidence = min(raw_confidence, baseline_confidence + 2)
-    elif bias_risk_level == "moderate":
-        adjusted_confidence = min(raw_confidence, baseline_confidence + 5)
-
-    confidence_deviation = round(adjusted_confidence - baseline_confidence, 1)
-    has_bias_flag = adjusted_confidence < threshold
+    has_bias_flag = adj_confidence < threshold
+    dev = round(adj_confidence - baseline_conf, 1)
 
     if has_bias_flag:
-        bias_explanation = (
-            f"Confidence ({adjusted_confidence:.0f}%) is {abs(confidence_deviation):.0f}% below the "
-            f"expected baseline ({baseline_confidence:.0f}%) for {fitz_label}. "
-            f"Research (Daneshjou et al., Nature Medicine 2024) documents reduced AI accuracy "
-            f"for this demographic group. Clinical verification is strongly recommended."
-        )
-    elif bias_risk_level in ("moderate", "high"):
-        bias_explanation = (
-            f"Confidence is within range, but {fitz_label} is categorised as '{bias_risk_level}' "
-            f"risk per published literature. Monitor carefully."
-        )
+        explanation = f"Confidence ({adj_confidence:.0f}%) is {abs(dev):.0f}% below baseline ({baseline_conf:.0f}%) for {fitz_label}."
     else:
-        bias_explanation = (
-            f"Confidence ({adjusted_confidence:.0f}%) is within the expected range for {fitz_label}. "
-            f"No significant bias signal detected."
-        )
+        explanation = f"Confidence within expected range for {fitz_label}."
 
-    bias_recs = []
-    if has_bias_flag:
-        bias_recs.append("Request human radiologist or dermatologist review due to bias flag.")
-        bias_recs.append("Document demographic data for institutional AI bias audit trail.")
-    if bias_risk_level == "high":
-        bias_recs.append("Consider additional imaging modality for confirmation.")
-
-    all_recommendations = bias_recs + llm_recommendations
-    elapsed_ms = int((time.time() - start) * 1000)
+    recs = (["Request human review due to bias flag."] if has_bias_flag else []) + llm_data.get("recommendations", [])
 
     return DiagnosisResult(
         scan_type=scan_type,
@@ -312,27 +300,25 @@ async def run_scan(
         age=age,
         gender=gender,
         localization=localization,
-        condition=condition,
-        finding_detected=finding_detected,
-        confidence=round(adjusted_confidence, 1),
-        diagnosis_summary=diagnosis_summary,
-        key_observations=key_observations,
+        condition=llm_data.get("condition", "Unknown"),
+        finding_detected=bool(llm_data.get("finding_detected", False)),
+        confidence=round(adj_confidence, 1),
+        diagnosis_summary=llm_data.get("diagnosis_summary", ""),
+        key_observations=llm_data.get("key_observations", []),
         has_bias_flag=has_bias_flag,
-        bias_risk_level=bias_risk_level,
-        baseline_confidence=baseline_confidence,
-        confidence_deviation=confidence_deviation,
-        bias_explanation=bias_explanation,
-        recommendations=all_recommendations,
-        model_version="PrismDX v3.0.0 / gemini-2.5-flash",
-        analysis_time_ms=elapsed_ms,
+        bias_risk_level=risk_level,
+        baseline_confidence=baseline_conf,
+        confidence_deviation=dev,
+        bias_explanation=explanation,
+        recommendations=recs,
+        model_version=f"PrismDX v3.0.0 / {active_model}",
+        analysis_time_ms=int((time.time() - start) * 1000),
         timestamp=datetime.now(timezone.utc).isoformat() + "Z",
     )
 
-
 @app.get("/health")
 def health():
-    return {"status": "ok", "version": "3.0.0", "model": "gemini-2.5-flash"}
-
+    return {"status": "ok", "primary": PRIMARY_MODEL, "fallback": FALLBACK_MODEL}
 
 @app.get("/baselines")
 def get_baselines():
