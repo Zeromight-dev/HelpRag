@@ -91,48 +91,49 @@ export default function ScanPage() {
     setError(null)
 
     try {
-      const result = await submitScan(
-        uploadedFile,
-        formData.scanType,
-        formData.fitzpatrick,
-        formData.age,
-        formData.gender,
-        formData.localization || undefined,
-      )
+      // Direct fetch call to ensure we catch status codes accurately
+      const apiFormData = new FormData()
+      apiFormData.append("image", uploadedFile)
+      apiFormData.append("scan_type", formData.scanType)
+      apiFormData.append("fitzpatrick", formData.fitzpatrick)
+      if (formData.age) apiFormData.append("age", formData.age)
+      if (formData.gender) apiFormData.append("gender", formData.gender)
+      if (formData.localization) apiFormData.append("localization", formData.localization)
 
-      // Handle the "Not a medical image" case (422 error from backend)
-      // This allows the Results page to show a graceful "Invalid Image" UI
-      if (result?.__invalid_image || result?.status === 422) {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+      const res = await fetch(`${API_URL}/scan`, {
+        method: "POST",
+        body: apiFormData,
+      })
+
+      const data = await res.json()
+
+      // Handle the Invalid Image validation from main.py
+      if (res.status === 422) {
         sessionStorage.setItem("PrismDX_result", JSON.stringify({
           __invalid_image: true,
           scan_type_label: scanTypes.find(t => t.value === formData.scanType)?.label ?? formData.scanType,
-          message: result.message || "The uploaded image does not appear to be a valid medical scan.",
+          message: data.detail || "Image does not appear to be a valid medical scan.",
         }))
         router.push("/results")
         return
       }
 
-      // Handle successful scan
-      sessionStorage.setItem("PrismDX_result", JSON.stringify(result))
+      if (!res.ok) {
+        throw new Error(data.detail || "Scan failed. Please try again.")
+      }
 
-      // Save to persistent history
-      const entry = { ...result, id: crypto.randomUUID() }
+      // Success Path
+      sessionStorage.setItem("PrismDX_result", JSON.stringify(data))
+
+      const entry = { ...data, id: crypto.randomUUID() }
       const history = JSON.parse(localStorage.getItem("PrismDX_history") || "[]")
       localStorage.setItem("PrismDX_history", JSON.stringify([entry, ...history]))
 
       router.push("/results")
     } catch (err: any) {
-      // Catch specific 422 errors if the API wrapper throws instead of returning the object
-      if (err.status === 422 || err.message?.includes("422")) {
-        sessionStorage.setItem("PrismDX_result", JSON.stringify({
-          __invalid_image: true,
-          scan_type_label: scanTypes.find(t => t.value === formData.scanType)?.label ?? formData.scanType,
-          message: "The uploaded image does not appear to be a valid medical scan.",
-        }))
-        router.push("/results")
-      } else {
-        setError(err instanceof Error ? err.message : "An unexpected error occurred")
-      }
+      console.error("Scan Error:", err)
+      setError(err instanceof Error ? err.message : "Network error — please check your connection.")
     } finally {
       setIsSubmitting(false)
     }
@@ -158,7 +159,6 @@ export default function ScanPage() {
 
         <form onSubmit={handleSubmit}>
           <div className="grid gap-8 lg:grid-cols-2">
-            {/* Image Upload */}
             <Card>
               <CardHeader>
                 <CardTitle>Medical Image</CardTitle>
@@ -211,35 +211,16 @@ export default function ScanPage() {
                         <p className="font-medium text-foreground">Drop your image here</p>
                         <p className="text-sm text-muted-foreground">or click to browse</p>
                       </div>
-                      <p className="text-xs text-muted-foreground">Supported: DICOM, PNG, JPEG (max 50MB)</p>
                     </div>
                   )}
                 </div>
               </CardContent>
             </Card>
 
-            {/* Demographics Form */}
             <Card>
               <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle>Patient Demographics</CardTitle>
-                    <CardDescription>Required for bias cross-referencing</CardDescription>
-                  </div>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8">
-                        <Info className="h-4 w-4 text-muted-foreground" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="left" className="max-w-xs">
-                      <p className="text-sm">
-                        Demographics are cross-referenced against peer-reviewed bias baselines
-                        (Nature Medicine 2024) to detect potential diagnostic disparities.
-                      </p>
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
+                <CardTitle>Patient Demographics</CardTitle>
+                <CardDescription>Required for bias cross-referencing</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="space-y-2">
@@ -256,20 +237,7 @@ export default function ScanPage() {
 
                 {needsLocalization && (
                   <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <Label>Lesion Localization</Label>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent side="right" className="max-w-xs">
-                          <p className="text-sm">
-                            Body location of the lesion. Used from the HAM10000 dataset schema
-                            to improve diagnostic context for the AI model.
-                          </p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
+                    <Label>Lesion Localization</Label>
                     <Select value={formData.localization} onValueChange={(v) => setFormData({ ...formData, localization: v })}>
                       <SelectTrigger><SelectValue placeholder="Select body location" /></SelectTrigger>
                       <SelectContent>
@@ -282,28 +250,12 @@ export default function ScanPage() {
                 )}
 
                 <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Label>Fitzpatrick Scale</Label>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                      </TooltipTrigger>
-                      <TooltipContent side="right" className="max-w-xs">
-                        <p className="text-sm">
-                          AI diagnostic accuracy varies significantly across Fitzpatrick skin types.
-                          This is used to apply the correct bias baseline from published research.
-                        </p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </div>
+                  <Label>Fitzpatrick Scale</Label>
                   <Select value={formData.fitzpatrick} onValueChange={(v) => setFormData({ ...formData, fitzpatrick: v })}>
                     <SelectTrigger><SelectValue placeholder="Select Fitzpatrick type" /></SelectTrigger>
                     <SelectContent>
                       {fitzpatrickTypes.map((t) => (
-                        <SelectItem key={t.value} value={t.value}>
-                          <span className="font-medium">{t.label}</span>
-                          <span className="text-muted-foreground"> – {t.description}</span>
-                        </SelectItem>
+                        <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -314,9 +266,6 @@ export default function ScanPage() {
                     <Label>Age</Label>
                     <Input
                       type="number"
-                      placeholder="Enter age"
-                      min="0"
-                      max="120"
                       value={formData.age}
                       onChange={(e) => setFormData({ ...formData, age: e.target.value })}
                     />
@@ -334,15 +283,9 @@ export default function ScanPage() {
                   </div>
                 </div>
 
-                <div className="pt-4 border-t border-border">
-                  <Button type="submit" className="w-full" size="lg" disabled={!isFormValid || isSubmitting}>
-                    {isSubmitting ? (
-                      <><Spinner className="mr-2" />Analyzing with Gemini AI...</>
-                    ) : (
-                      "Run Bias Analysis"
-                    )}
-                  </Button>
-                </div>
+                <Button type="submit" className="w-full" disabled={!isFormValid || isSubmitting}>
+                  {isSubmitting ? <Spinner className="mr-2" /> : "Run Bias Analysis"}
+                </Button>
               </CardContent>
             </Card>
           </div>
