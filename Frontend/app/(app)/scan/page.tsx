@@ -22,7 +22,6 @@ const scanTypes = [
   { value: "mri", label: "MRI" },
 ]
 
-// Only these scan types require body localization
 const LOCALIZATION_SCAN_TYPES = ["skin-lesion", "dermoscopy"]
 
 const localizationOptions = [
@@ -100,15 +99,40 @@ export default function ScanPage() {
         formData.gender,
         formData.localization || undefined,
       )
-      // Store result in sessionStorage for the results page
+
+      // Handle the "Not a medical image" case (422 error from backend)
+      // This allows the Results page to show a graceful "Invalid Image" UI
+      if (result?.__invalid_image || result?.status === 422) {
+        sessionStorage.setItem("PrismDX_result", JSON.stringify({
+          __invalid_image: true,
+          scan_type_label: scanTypes.find(t => t.value === formData.scanType)?.label ?? formData.scanType,
+          message: result.message || "The uploaded image does not appear to be a valid medical scan.",
+        }))
+        router.push("/results")
+        return
+      }
+
+      // Handle successful scan
       sessionStorage.setItem("PrismDX_result", JSON.stringify(result))
-      // Save to history
+
+      // Save to persistent history
       const entry = { ...result, id: crypto.randomUUID() }
       const history = JSON.parse(localStorage.getItem("PrismDX_history") || "[]")
       localStorage.setItem("PrismDX_history", JSON.stringify([entry, ...history]))
+
       router.push("/results")
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "An unexpected error occurred")
+    } catch (err: any) {
+      // Catch specific 422 errors if the API wrapper throws instead of returning the object
+      if (err.status === 422 || err.message?.includes("422")) {
+        sessionStorage.setItem("PrismDX_result", JSON.stringify({
+          __invalid_image: true,
+          scan_type_label: scanTypes.find(t => t.value === formData.scanType)?.label ?? formData.scanType,
+          message: "The uploaded image does not appear to be a valid medical scan.",
+        }))
+        router.push("/results")
+      } else {
+        setError(err instanceof Error ? err.message : "An unexpected error occurred")
+      }
     } finally {
       setIsSubmitting(false)
     }
@@ -230,7 +254,6 @@ export default function ScanPage() {
                   </Select>
                 </div>
 
-                {/* Localization — only shown for skin-lesion and dermoscopy */}
                 {needsLocalization && (
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
