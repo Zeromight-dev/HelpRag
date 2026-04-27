@@ -39,8 +39,8 @@ app.add_middleware(
 )
 
 # ── Model Configuration ───────────────────────────────────────────────────────
-PRIMARY_MODEL = "gemini-2.0-flash" 
-FALLBACK_MODEL = "gemini-1.5-flash"
+PRIMARY_MODEL = "gemini-2.5-flash" 
+FALLBACK_MODEL = "gemini-2-flash"
 
 # ── Gemini Client ─────────────────────────────────────────────────────────────
 
