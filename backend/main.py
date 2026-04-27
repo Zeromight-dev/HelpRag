@@ -176,6 +176,25 @@ async def run_scan(
     fitz_label = FITZPATRICK_LABELS.get(fitzpatrick, f"Type {fitzpatrick}")
     scan_label = SCAN_TYPE_LABELS.get(scan_type, scan_type)
 
+    # ── Image Validation ─────────────────────────────────────────────────────
+    try:
+        client = get_gemini_client()
+        validation_part = types.Part.from_bytes(data=image_bytes, mime_type=content_type)
+        validation_response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[validation_part, f"Is this a genuine medical image of type '{scan_label}'? Reply only YES or NO."],
+            config=types.GenerateContentConfig(temperature=0.1, max_output_tokens=10),
+        )
+        if validation_response.text.strip().upper().startswith("NO"):
+            raise HTTPException(
+                status_code=422,
+                detail=f"Image does not appear to be a valid {scan_label}. Please upload a genuine medical image."
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        pass
+
     demo_ctx = f"Fitzpatrick {fitz_label}"
     if age:
         demo_ctx += f", Age {age}"
@@ -312,7 +331,7 @@ async def run_scan(
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "version": "3.0.0", "model": "gemini-2.0-flash"}
+    return {"status": "ok", "version": "3.0.0", "model": "gemini-2.5-flash"}
 
 
 @app.get("/baselines")

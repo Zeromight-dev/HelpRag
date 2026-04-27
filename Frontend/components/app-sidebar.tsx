@@ -55,7 +55,7 @@ export function AppSidebar() {
 
       <div className="p-4 border-t border-border">
         <div className="px-4 py-3 rounded-lg bg-muted">
-          <p className="text-xs text-muted-foreground">Version 1.0.0</p>
+          <p className="text-xs text-muted-foreground">Version 3.0.0</p>
           <p className="text-xs text-muted-foreground">Clinical Use Only</p>
         </div>
       </div>

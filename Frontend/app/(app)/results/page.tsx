@@ -99,7 +99,9 @@ export default function ResultsPage() {
     high: "bg-red-100 text-red-800 border-red-200",
   }
 
-  const formattedDate = new Date(result.timestamp).toLocaleString()
+  const formattedDate = result.timestamp
+    ? new Date(result.timestamp).toLocaleString()
+    : "Unknown date"
 
   return (
     <TooltipProvider>
