@@ -91,16 +91,20 @@ export default function ScanPage() {
     setError(null)
 
     try {
-      // Direct fetch call to ensure we catch status codes accurately
       const apiFormData = new FormData()
-      apiFormData.append("image", uploadedFile)
-      apiFormData.append("scan_type", formData.scanType)
-      apiFormData.append("fitzpatrick", formData.fitzpatrick)
-      if (formData.age) apiFormData.append("age", formData.age)
-      if (formData.gender) apiFormData.append("gender", formData.gender)
-      if (formData.localization) apiFormData.append("localization", formData.localization)
+      // ... existing formData.append lines ...
 
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+      // --- START OF NEW CODE ---
+      // This checks if you are on localhost or the live Railway site
+      const isLocal = window.location.hostname === "localhost"
+
+      // Replace the URL below with your actual Railway "Public Domain" 
+      // Found in Railway Dashboard > Settings > Public Networking
+      const RAILWAY_URL = "prismdx-production.up.railway.app"
+
+      const API_URL = isLocal ? "http://localhost:8000" : RAILWAY_URL
+      // --- END OF NEW CODE ---
+
       const res = await fetch(`${API_URL}/scan`, {
         method: "POST",
         body: apiFormData,
