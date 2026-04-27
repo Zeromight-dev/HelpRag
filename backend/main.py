@@ -39,8 +39,8 @@ app.add_middleware(
 )
 
 # ── Model Configuration ───────────────────────────────────────────────────────
-PRIMARY_MODEL = "gemini-2.5-pro" 
-FALLBACK_MODEL = "gemini-2.5-flash"
+PRIMARY_MODEL = "gemini-2.0-flash" 
+FALLBACK_MODEL = "gemini-1.5-flash"
 
 # ── Gemini Client ─────────────────────────────────────────────────────────────
 
@@ -182,40 +182,42 @@ async def run_scan(
     
     client = get_gemini_client()
 
-    # ── Internal Helper for Generation ──
-    def call_gemini(model_name: str, content_parts: list, response_schema=None):
-        config_args = {
-            "temperature": 0.1,
-            "max_output_tokens": 1024,
-        }
-        if response_schema:
+    # ── Internal Unified Generation Helper ──
+    def generate_with_fallback(model_parts: list, is_json: bool = False):
+        config_args = {"temperature": 0.1}
+        if is_json:
             config_args["response_mime_type"] = "application/json"
-            # config_args["response_schema"] = response_schema # Uncomment if SDK supports it directly
-            
-        return client.models.generate_content(
-            model=model_name,
-            contents=content_parts,
-            config=types.GenerateContentConfig(**config_args),
-        )
+        else:
+            config_args["max_output_tokens"] = 10
 
-    # ── Image Validation with Fallback ──
-    validation_passed = True
-    active_model = PRIMARY_MODEL
-    
-    try:
-        validation_part = types.Part.from_bytes(data=image_bytes, mime_type=content_type)
-        v_prompt = f"Is this a genuine medical image of type '{scan_label}'? Reply only YES or NO."
-        
         try:
-            v_res = call_gemini(PRIMARY_MODEL, [validation_part, v_prompt])
+            # Try Primary
+            res = client.models.generate_content(
+                model=PRIMARY_MODEL,
+                contents=model_parts,
+                config=types.GenerateContentConfig(**config_args)
+            )
+            return res, PRIMARY_MODEL
         except Exception as e:
+            # Check for Resource Exhaustion
             if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
-                v_res = call_gemini(FALLBACK_MODEL, [validation_part, v_prompt])
-                active_model = FALLBACK_MODEL
-            else:
-                raise e
+                res = client.models.generate_content(
+                    model=FALLBACK_MODEL,
+                    contents=model_parts,
+                    config=types.GenerateContentConfig(**config_args)
+                )
+                return res, FALLBACK_MODEL
+            raise e
+
+    # ── Image Validation ─────────────────────────────────────────────────────
+    try:
+        validation_parts = [
+            types.Part.from_bytes(data=image_bytes, mime_type=content_type),
+            f"Is this a genuine medical image of type '{scan_label}'? Reply only YES or NO."
+        ]
+        v_response, _ = generate_with_fallback(validation_parts, is_json=False)
         
-        if v_res.text.strip().upper().startswith("NO"):
+        if v_response.text.strip().upper().startswith("NO"):
             raise HTTPException(
                 status_code=422,
                 detail=f"Image does not appear to be a valid {scan_label}. Please upload a genuine medical image."
@@ -223,9 +225,9 @@ async def run_scan(
     except HTTPException:
         raise
     except Exception:
-        pass
+        pass # Silently continue if validation API fails but not due to medical mismatch
 
-    # ── Main Analysis with Fallback ──
+    # ── Main Analysis ────────────────────────────────────────────────────────
     demo_ctx = f"Fitzpatrick {fitz_label}"
     if age: demo_ctx += f", Age {age}"
     if gender: demo_ctx += f", Gender: {gender}"
@@ -236,59 +238,53 @@ async def run_scan(
         f"Analyze the provided {scan_label} for a patient: {demo_ctx}. "
         f"Return ONLY a valid JSON object with exactly this structure: "
         f'{{"condition": "primary condition", "finding_detected": true, "confidence": 85, '
-        f'"diagnosis_summary": "summary text", "key_observations": ["obs1"], "recommendations": ["rec1"]}}'
+        f'"diagnosis_summary": "clinical summary", "key_observations": ["obs"], "recommendations": ["rec"]}}'
     )
 
     try:
-        image_part = types.Part.from_bytes(data=image_bytes, mime_type=content_type)
-        
-        try:
-            response = call_gemini(PRIMARY_MODEL, [image_part, prompt], response_schema=True)
-            active_model = PRIMARY_MODEL
-        except Exception as e:
-            if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
-                response = call_gemini(FALLBACK_MODEL, [image_part, prompt], response_schema=True)
-                active_model = FALLBACK_MODEL
-            else:
-                raise e
-                
+        analysis_parts = [
+            types.Part.from_bytes(data=image_bytes, mime_type=content_type),
+            prompt
+        ]
+        response, used_model = generate_with_fallback(analysis_parts, is_json=True)
         raw_text = response.text.strip()
-    except HTTPException:
-        raise
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Gemini API error: {str(e)}")
 
-    # ── Parse JSON ──
+    # ── Parse JSON ────────────────────────────────────────────────────────────
+    if raw_text.startswith("```"):
+        raw_text = raw_text.split("```")[1]
+        if raw_text.startswith("json"): raw_text = raw_text[4:]
+    raw_text = raw_text.strip()
+
     try:
-        if "```json" in raw_text:
-            raw_text = raw_text.split("```json")[1].split("```")[0].strip()
-        elif "```" in raw_text:
-            raw_text = raw_text.split("```")[1].strip()
         llm_data = json.loads(raw_text)
-    except Exception:
+    except json.JSONDecodeError:
         raise HTTPException(status_code=502, detail="Failed to parse AI response.")
 
-    # ── Bias Evaluation Logic ──
-    raw_confidence = float(llm_data.get("confidence", 85))
+    # ── Bias Evaluation ───────────────────────────────────────────────────────
     baseline_data = BIAS_BASELINES[scan_type][fitzpatrick]
+    raw_confidence = float(llm_data.get("confidence", 85))
     baseline_conf = float(baseline_data["baseline"])
     threshold = float(baseline_data["threshold"])
-    risk_level = baseline_data["risk"]
+    bias_risk_level = baseline_data["risk"]
 
-    # Adjust confidence based on known research disparities
-    adj_confidence = raw_confidence
-    if risk_level == "high":
-        adj_confidence = min(raw_confidence, baseline_conf + 2)
-    elif risk_level == "moderate":
-        adj_confidence = min(raw_confidence, baseline_conf + 5)
+    adjusted_confidence = raw_confidence
+    if bias_risk_level == "high":
+        adjusted_confidence = min(raw_confidence, baseline_conf + 2)
+    elif bias_risk_level == "moderate":
+        adjusted_confidence = min(raw_confidence, baseline_conf + 5)
 
-    has_bias_flag = adj_confidence < threshold
-    dev = round(adj_confidence - baseline_conf, 1)
+    has_bias_flag = adjusted_confidence < threshold
+    dev = round(adjusted_confidence - baseline_conf, 1)
 
     if has_bias_flag:
-        explanation = f"Confidence ({adj_confidence:.0f}%) is {abs(dev):.0f}% below baseline ({baseline_conf:.0f}%) for {fitz_label}."
+        bias_explanation = (
+            f"Confidence ({adjusted_confidence:.0f}%) is {abs(dev):.0f}% below baseline ({baseline_conf:.0f}%) for {fitz_label}. "
+            f"Published research suggests high potential for bias."
+        )
     else:
-        explanation = f"Confidence within expected range for {fitz_label}."
+        bias_explanation = f"Confidence within expected range for {fitz_label}."
 
     recs = (["Request human review due to bias flag."] if has_bias_flag else []) + llm_data.get("recommendations", [])
 
@@ -302,16 +298,16 @@ async def run_scan(
         localization=localization,
         condition=llm_data.get("condition", "Unknown"),
         finding_detected=bool(llm_data.get("finding_detected", False)),
-        confidence=round(adj_confidence, 1),
+        confidence=round(adjusted_confidence, 1),
         diagnosis_summary=llm_data.get("diagnosis_summary", ""),
         key_observations=llm_data.get("key_observations", []),
         has_bias_flag=has_bias_flag,
-        bias_risk_level=risk_level,
+        bias_risk_level=bias_risk_level,
         baseline_confidence=baseline_conf,
         confidence_deviation=dev,
-        bias_explanation=explanation,
+        bias_explanation=bias_explanation,
         recommendations=recs,
-        model_version=f"PrismDX v3.0.0 / {active_model}",
+        model_version=f"PrismDX v3.0.0 / {used_model}",
         analysis_time_ms=int((time.time() - start) * 1000),
         timestamp=datetime.now(timezone.utc).isoformat() + "Z",
     )
