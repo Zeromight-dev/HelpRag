@@ -226,7 +226,7 @@ async def run_scan(
         )
 
         response = client.models.generate_content(
-            model="gemini-3.1-pro",
+            model="gemini-2.5-flash",
             contents=[image_part, prompt],
             config=types.GenerateContentConfig(
                 temperature=0.1,
