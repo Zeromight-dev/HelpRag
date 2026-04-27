@@ -20,7 +20,7 @@ export default function DashboardPage() {
   const [history, setHistory] = useState<HistoryEntry[]>([])
 
   useEffect(() => {
-    const stored = JSON.parse(localStorage.getItem("helprag_history") || "[]")
+    const stored = JSON.parse(localStorage.getItem("PrismDX_history") || "[]")
     setHistory(stored)
   }, [])
 
@@ -175,7 +175,7 @@ export default function DashboardPage() {
                   <button
                     key={entry.id}
                     onClick={() => {
-                      sessionStorage.setItem("helprag_result", JSON.stringify(entry))
+                      sessionStorage.setItem("PrismDX_result", JSON.stringify(entry))
                       router.push("/results")
                     }}
                     className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-muted/60 transition-colors text-left"

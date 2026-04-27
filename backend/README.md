@@ -1,18 +1,18 @@
-# HelpRag Backend
+# PrismDX Backend
 
-FastAPI backend for HelpRag diagnostic bias detection tool, powered by Groq AI.
+FastAPI backend for PrismDX diagnostic bias detection tool, powered by Gemini AI.
 
 ## Setup (Windows PowerShell)
 
 ```powershell
-cd helprag-backend
+cd PrismDX-backend
 uvicorn main:app --reload --port 8000
 ```
 
 ## Setup (Mac / Linux)
 
 ```bash
-cd helprag-backend
+cd PrismDX-backend
 uvicorn main:app --reload --port 8000
 ```
 

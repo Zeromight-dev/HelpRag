@@ -1,5 +1,5 @@
 """
-HelpRag FastAPI Backend
+PrismDX FastAPI Backend
 Connects to Gemini API for medical image analysis with demographic bias detection.
 Uses: google-genai (new SDK) with gemini-2.0-flash
 """
@@ -21,7 +21,7 @@ from google.genai import types
 # ── App Setup ────────────────────────────────────────────────────────────────
 
 app = FastAPI(
-    title="HelpRag API",
+    title="PrismDX API",
     description="AI diagnostic bias detection backend powered by Google Gemini",
     version="3.0.0",
 )
@@ -29,10 +29,10 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000",
-        "https://helprag-app-413bf.web.app",
-        "https://helprag-app-413bf.firebaseapp.com",
-    ],
+    "http://localhost:3000",
+    "https://prismdx-2026.web.app",
+    "https://prismdx-2026.firebaseapp.com",
+],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -304,7 +304,7 @@ async def run_scan(
         confidence_deviation=confidence_deviation,
         bias_explanation=bias_explanation,
         recommendations=all_recommendations,
-        model_version="HelpRag v3.0.0 / gemini-2.0-flash",
+        model_version="PrismDX v3.0.0 / gemini-2.0-flash",
         analysis_time_ms=elapsed_ms,
         timestamp=datetime.now(timezone.utc).isoformat() + "Z",
     )

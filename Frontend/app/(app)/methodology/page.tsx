@@ -7,7 +7,7 @@ const features = [
   {
     icon: Shield,
     title: "Point-of-Care Bias Overlay",
-    description: "HelpRag acts as a transparent layer over existing AI diagnostic tools, flagging potential demographic biases in real-time without disrupting clinical workflow."
+    description: "PrismDX acts as a transparent layer over existing AI diagnostic tools, flagging potential demographic biases in real-time without disrupting clinical workflow."
   },
   {
     icon: Database,
@@ -42,25 +42,25 @@ export default function MethodologyPage() {
         <Badge variant="outline" className="mb-4">Documentation</Badge>
         <h1 className="text-3xl font-bold text-foreground mb-2">Methodology</h1>
         <p className="text-lg text-muted-foreground">
-          Understanding how HelpRag detects and surfaces AI diagnostic bias
+          Understanding how PrismDX detects and surfaces AI diagnostic bias
         </p>
       </div>
 
       {/* Introduction */}
       <Card className="mb-8">
         <CardHeader>
-          <CardTitle>What is HelpRag?</CardTitle>
+          <CardTitle>What is PrismDX?</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-muted-foreground leading-relaxed">
-            HelpRag is a <strong className="text-foreground">point-of-care demographic bias overlay</strong> designed
+            PrismDX is a <strong className="text-foreground">point-of-care demographic bias overlay</strong> designed
             to fill a critical gap in current MLOps tools. While most AI monitoring focuses on aggregate model
-            performance, HelpRag surfaces potential bias flags <em>directly to clinicians</em> at the moment of
+            performance, PrismDX surfaces potential bias flags <em>directly to clinicians</em> at the moment of
             diagnosis—when it matters most.
           </p>
           <p className="text-muted-foreground leading-relaxed">
             Research has consistently shown that AI diagnostic models can exhibit reduced accuracy for
-            underrepresented demographic groups, particularly in dermatology and radiology. HelpRag provides
+            underrepresented demographic groups, particularly in dermatology and radiology. PrismDX provides
             real-time visibility into these disparities, empowering clinicians to make informed decisions
             about when additional verification is warranted.
           </p>
@@ -93,7 +93,7 @@ export default function MethodologyPage() {
       <Card className="mb-8">
         <CardHeader>
           <CardTitle>How Bias Detection Works</CardTitle>
-          <CardDescription>A step-by-step overview of the HelpRag pipeline</CardDescription>
+          <CardDescription>A step-by-step overview of the PrismDX pipeline</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-6">
@@ -278,7 +278,7 @@ export default function MethodologyPage() {
               <p className="text-sm font-medium text-foreground">Continuous Updates</p>
               <p className="text-sm text-muted-foreground">
                 Our baseline database is continuously updated as new research is published.
-                HelpRag monitors leading journals for relevant studies on AI diagnostic disparities.
+                PrismDX monitors leading journals for relevant studies on AI diagnostic disparities.
               </p>
             </div>
           </div>

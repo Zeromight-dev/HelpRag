@@ -23,7 +23,7 @@ export function AppSidebar() {
             <Activity className="w-6 h-6 text-primary-foreground" />
           </div>
           <div>
-            <h1 className="text-xl font-semibold text-foreground">HelpRag</h1>
+            <h1 className="text-xl font-semibold text-foreground">PrismDX</h1>
             <p className="text-xs text-muted-foreground">Bias Detection</p>
           </div>
         </Link>

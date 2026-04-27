@@ -7,14 +7,14 @@ export async function exportResultsToPDF(result: DiagnosisResult): Promise<void>
   const biasColor = result.has_bias_flag
     ? "#dc2626"
     : result.bias_risk_level === "moderate"
-    ? "#d97706"
-    : "#16a34a"
+      ? "#d97706"
+      : "#16a34a"
 
   const biasLabel = result.has_bias_flag
     ? "⚠ BIAS FLAG DETECTED"
     : result.bias_risk_level === "moderate"
-    ? "⚡ MODERATE RISK"
-    : "✓ NO BIAS DETECTED"
+      ? "⚡ MODERATE RISK"
+      : "✓ NO BIAS DETECTED"
 
   const formattedDate = new Date(result.timestamp).toLocaleString()
   const deviation = result.confidence_deviation >= 0
@@ -25,7 +25,7 @@ export async function exportResultsToPDF(result: DiagnosisResult): Promise<void>
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>HelpRag Diagnostic Report — ${result.condition}</title>
+  <title>PrismDX Diagnostic Report — ${result.condition}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -107,7 +107,7 @@ export async function exportResultsToPDF(result: DiagnosisResult): Promise<void>
 <body>
   <div class="header">
     <div>
-      <div class="logo">HelpRag <span>Diagnostic Report</span></div>
+      <div class="logo">PrismDX <span>Diagnostic Report</span></div>
       <div style="margin-top:6px;font-size:11px;color:#64748b">${biasLabel}</div>
     </div>
     <div class="meta">
@@ -176,7 +176,7 @@ export async function exportResultsToPDF(result: DiagnosisResult): Promise<void>
   </div>` : ""}
 
   <div class="footer">
-    <span>HelpRag v2.5.0 — AI Diagnostic Bias Detection Tool</span>
+    <span>PrismDX v2.5.0 — AI Diagnostic Bias Detection Tool</span>
     <span>For clinical use with qualified medical oversight only. Not a substitute for professional diagnosis.</span>
   </div>
 

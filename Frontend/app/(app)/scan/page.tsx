@@ -101,11 +101,11 @@ export default function ScanPage() {
         formData.localization || undefined,
       )
       // Store result in sessionStorage for the results page
-      sessionStorage.setItem("helprag_result", JSON.stringify(result))
+      sessionStorage.setItem("PrismDX_result", JSON.stringify(result))
       // Save to history
       const entry = { ...result, id: crypto.randomUUID() }
-      const history = JSON.parse(localStorage.getItem("helprag_history") || "[]")
-      localStorage.setItem("helprag_history", JSON.stringify([entry, ...history]))
+      const history = JSON.parse(localStorage.getItem("PrismDX_history") || "[]")
+      localStorage.setItem("PrismDX_history", JSON.stringify([entry, ...history]))
       router.push("/results")
     } catch (err) {
       setError(err instanceof Error ? err.message : "An unexpected error occurred")
@@ -142,13 +142,12 @@ export default function ScanPage() {
               </CardHeader>
               <CardContent>
                 <div
-                  className={`relative border-2 border-dashed rounded-xl p-12 text-center transition-colors ${
-                    isDragging
-                      ? "border-primary bg-primary/5"
-                      : uploadedFile
+                  className={`relative border-2 border-dashed rounded-xl p-12 text-center transition-colors ${isDragging
+                    ? "border-primary bg-primary/5"
+                    : uploadedFile
                       ? "border-green-500 bg-green-50"
                       : "border-border hover:border-primary/50 hover:bg-muted/50"
-                  }`}
+                    }`}
                   onDragOver={(e) => { e.preventDefault(); setIsDragging(true) }}
                   onDragLeave={(e) => { e.preventDefault(); setIsDragging(false) }}
                   onDrop={handleDrop}
@@ -315,7 +314,7 @@ export default function ScanPage() {
                 <div className="pt-4 border-t border-border">
                   <Button type="submit" className="w-full" size="lg" disabled={!isFormValid || isSubmitting}>
                     {isSubmitting ? (
-                      <><Spinner className="mr-2" />Analyzing with Groq AI...</>
+                      <><Spinner className="mr-2" />Analyzing with Gemini AI...</>
                     ) : (
                       "Run Bias Analysis"
                     )}

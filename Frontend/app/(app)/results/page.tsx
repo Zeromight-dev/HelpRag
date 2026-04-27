@@ -30,9 +30,8 @@ function ConfidenceBar({ value, baseline }: { value: number; baseline: number })
         />
         {/* Confidence fill */}
         <div
-          className={`h-full rounded-full transition-all duration-700 ${
-            value >= baseline ? "bg-green-500" : "bg-destructive"
-          }`}
+          className={`h-full rounded-full transition-all duration-700 ${value >= baseline ? "bg-green-500" : "bg-destructive"
+            }`}
           style={{ width: `${value}%` }}
         />
       </div>
@@ -52,7 +51,7 @@ export default function ResultsPage() {
   const [reviewRequested, setReviewRequested] = useState(false)
 
   useEffect(() => {
-    const stored = sessionStorage.getItem("helprag_result")
+    const stored = sessionStorage.getItem("PrismDX_result")
     if (!stored) { router.push("/scan"); return }
     try {
       const parsed = JSON.parse(stored)
@@ -81,15 +80,15 @@ export default function ResultsPage() {
   const handleHumanReview = () => {
     if (reviewRequested || !result) return
     // Update history entry with human_review_requested flag
-    const history = JSON.parse(localStorage.getItem("helprag_history") || "[]")
+    const history = JSON.parse(localStorage.getItem("PrismDX_history") || "[]")
     const updated = history.map((e: typeof result & { id: string; human_review_requested?: boolean }) => {
       if (e.timestamp === result.timestamp) return { ...e, human_review_requested: true }
       return e
     })
-    localStorage.setItem("helprag_history", JSON.stringify(updated))
+    localStorage.setItem("PrismDX_history", JSON.stringify(updated))
     // Update sessionStorage so re-viewing shows correct state
     const updatedResult = { ...result, human_review_requested: true }
-    sessionStorage.setItem("helprag_result", JSON.stringify(updatedResult))
+    sessionStorage.setItem("PrismDX_result", JSON.stringify(updatedResult))
     setReviewRequested(true)
     toast.success("Human review requested — flagged in scan history")
   }

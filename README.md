@@ -1,4 +1,4 @@
-# HelpRag — AI Diagnostic Bias Detection Tool
+# PrismDX — AI Diagnostic Bias Detection Tool
 
 A full-stack medical AI tool that analyzes diagnostic images and flags potential demographic bias in AI confidence scores, cross-referenced against peer-reviewed research baselines.
 
@@ -6,9 +6,9 @@ A full-stack medical AI tool that analyzes diagnostic images and flags potential
 
 ## What It Does
 
-Medical AI models have documented accuracy disparities across demographic groups — particularly across Fitzpatrick skin types. HelpRag makes this visible by:
+Medical AI models have documented accuracy disparities across demographic groups — particularly across Fitzpatrick skin types. PrismDX makes this visible by:
 
-- Running AI image analysis via **Groq (Llama 4 Scout vision model)**
+- Running AI image analysis via **Gemini (Llama 4 Scout vision model)**
 - Cross-referencing AI confidence against **published bias baselines** (Daneshjou et al., Nature Medicine 2024)
 - Flagging scans where confidence falls below the expected threshold for that demographic
 - Tracking scan history with search, filter, and PDF export
@@ -21,7 +21,7 @@ Medical AI models have documented accuracy disparities across demographic groups
 |---|---|
 | Frontend | Next.js 15, React 19, Tailwind CSS, shadcn/ui |
 | Backend | FastAPI, Python 3.13 |
-| AI Model | Groq API — `meta-llama/llama-4-scout-17b-16e-instruct` |
+| AI Model | Gemini API — `meta-llama/llama-4-scout-17b-16e-instruct` |
 | Charts | Recharts |
 | State | localStorage + sessionStorage |
 
@@ -42,11 +42,11 @@ Medical AI models have documented accuracy disparities across demographic groups
 ## Project Structure
 
 ```
-Helprag/
+PrismDX/
 ├── Backend/
 │   ├── main.py           # FastAPI app + /scan endpoint
 │   ├── requirements.txt  # Python dependencies
-│   └── .env              # GROQ_API_KEY (not committed)
+│   └── .env              # Gemini_API_KEY (not committed)
 └── Frontend/
     ├── app/
     │   ├── layout.tsx
@@ -70,7 +70,7 @@ Helprag/
 ### Prerequisites
 - Python 3.10+
 - Node.js 18+
-- Groq API key — free at [console.groq.com](https://console.groq.com)
+- Gemini API key — free at [console.Gemini.com](https://console.Gemini.com)
 
 ### Backend
 
@@ -81,7 +81,7 @@ pip install -r requirements.txt
 
 Create a `.env` file in the `Backend/` folder:
 ```
-GROQ_API_KEY=your_groq_api_key_here
+Gemini_API_KEY=your_Gemini_api_key_here
 ```
 
 Run the backend:

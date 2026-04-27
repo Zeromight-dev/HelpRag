@@ -24,7 +24,7 @@ export default function HistoryPage() {
   const [sortBy, setSortBy] = useState("newest")
 
   useEffect(() => {
-    const stored = JSON.parse(localStorage.getItem("helprag_history") || "[]")
+    const stored = JSON.parse(localStorage.getItem("PrismDX_history") || "[]")
     setEntries(stored)
   }, [])
 
@@ -69,12 +69,12 @@ export default function HistoryPage() {
   const handleDelete = (id: string) => {
     const updated = entries.filter(e => e.id !== id)
     setEntries(updated)
-    localStorage.setItem("helprag_history", JSON.stringify(updated))
+    localStorage.setItem("PrismDX_history", JSON.stringify(updated))
     toast.success("Record deleted")
   }
 
   const handleView = (entry: HistoryEntry) => {
-    sessionStorage.setItem("helprag_result", JSON.stringify(entry))
+    sessionStorage.setItem("PrismDX_result", JSON.stringify(entry))
     router.push("/results")
   }
 
@@ -89,7 +89,7 @@ export default function HistoryPage() {
   const handleClearAll = () => {
     if (!confirm("Delete all scan history? This cannot be undone.")) return
     setEntries([])
-    localStorage.removeItem("helprag_history")
+    localStorage.removeItem("PrismDX_history")
     toast.success("History cleared")
   }
 
