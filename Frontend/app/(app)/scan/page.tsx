@@ -92,22 +92,24 @@ export default function ScanPage() {
 
     try {
       const apiFormData = new FormData()
-      // ... existing formData.append lines ...
 
-      // --- START OF NEW CODE ---
-      // This checks if you are on localhost or the live Railway site
+      // ADD THESE LINES: They connect your UI to your Backend
+      apiFormData.append("image", uploadedFile)
+      apiFormData.append("scan_type", formData.scanType)
+      apiFormData.append("fitzpatrick", formData.fitzpatrick)
+      apiFormData.append("age", formData.age)
+      apiFormData.append("gender", formData.gender)
+      if (formData.localization) {
+        apiFormData.append("localization", formData.localization)
+      }
+
       const isLocal = window.location.hostname === "localhost"
-
-      // Replace the URL below with your actual Railway "Public Domain" 
-      // Found in Railway Dashboard > Settings > Public Networking
-      const RAILWAY_URL = "prismdx-production.up.railway.app"
-
+      const RAILWAY_URL = "https://prismdx-production.up.railway.app" // Added https://
       const API_URL = isLocal ? "http://localhost:8000" : RAILWAY_URL
-      // --- END OF NEW CODE ---
 
       const res = await fetch(`${API_URL}/scan`, {
         method: "POST",
-        body: apiFormData,
+        body: apiFormData, // Now this contains your actual data
       })
 
       const data = await res.json()
