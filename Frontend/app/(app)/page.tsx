@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { AlertTriangle, Activity, BarChart3, CheckCircle, ArrowRight, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -57,8 +58,10 @@ export default function DashboardPage() {
           <h1 className="text-2xl font-bold">Dashboard</h1>
           <p className="text-muted-foreground">AI diagnostic bias monitoring overview</p>
         </div>
-        <Button onClick={() => router.push("/scan")}>
-          <Plus className="w-4 h-4 mr-2" />New Scan
+        <Button asChild>
+          <Link href="/scan">
+            <Plus className="w-4 h-4 mr-2" />New Scan
+          </Link>
         </Button>
       </div>
 

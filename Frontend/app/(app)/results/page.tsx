@@ -237,8 +237,6 @@ export default function ResultsPage() {
     )
   }
 
-  // ... (Keep the rest of your return() block UI exactly as it is)
-
   if (!result) return null
 
   // ── Invalid image branch ────────────────────────────────────────────────
