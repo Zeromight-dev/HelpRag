@@ -93,7 +93,7 @@ export default function ScanPage() {
     try {
       const apiFormData = new FormData()
 
-      // ADD THESE LINES: They connect your UI to your Backend
+      // These lines attach your UI data to the request
       apiFormData.append("image", uploadedFile)
       apiFormData.append("scan_type", formData.scanType)
       apiFormData.append("fitzpatrick", formData.fitzpatrick)
@@ -103,43 +103,30 @@ export default function ScanPage() {
         apiFormData.append("localization", formData.localization)
       }
 
-      const isLocal = window.location.hostname === "localhost"
-      const RAILWAY_URL = "https://prismdx-production.up.railway.app" // Added https://
-      const API_URL = isLocal ? "http://localhost:8000" : RAILWAY_URL
+      // Hardcoded Railway URL with https protocol
+      const API_URL = "https://prismdx-production.up.railway.app"
 
       const res = await fetch(`${API_URL}/scan`, {
         method: "POST",
-        body: apiFormData, // Now this contains your actual data
+        body: apiFormData,
       })
 
-      const data = await res.json()
-
-      // Handle the Invalid Image validation from main.py
-      if (res.status === 422) {
-        sessionStorage.setItem("PrismDX_result", JSON.stringify({
-          __invalid_image: true,
-          scan_type_label: scanTypes.find(t => t.value === formData.scanType)?.label ?? formData.scanType,
-          message: data.detail || "Image does not appear to be a valid medical scan.",
-        }))
-        router.push("/results")
-        return
-      }
-
       if (!res.ok) {
-        throw new Error(data.detail || "Scan failed. Please try again.")
+        const errorText = await res.text()
+        throw new Error(`Server Error: ${res.status}`)
       }
 
-      // Success Path
-      sessionStorage.setItem("PrismDX_result", JSON.stringify(data))
+      const result = await res.json()
 
-      const entry = { ...data, id: crypto.randomUUID() }
-      const history = JSON.parse(localStorage.getItem("PrismDX_history") || "[]")
-      localStorage.setItem("PrismDX_history", JSON.stringify([entry, ...history]))
+      // Save to storage so the results page can see it
+      sessionStorage.setItem("PrismDX_result", JSON.stringify(result))
 
+      // Navigate to results page
       router.push("/results")
+
     } catch (err: any) {
-      console.error("Scan Error:", err)
-      setError(err instanceof Error ? err.message : "Network error — please check your connection.")
+      console.error("Submission error:", err)
+      setError("Analysis failed. Please check your connection and try again.")
     } finally {
       setIsSubmitting(false)
     }

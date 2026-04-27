@@ -201,18 +201,43 @@ export default function ResultsPage() {
   const [result, setResult] = useState<PageResult | null>(null)
   const [isExporting, setIsExporting] = useState(false)
   const [reviewRequested, setReviewRequested] = useState(false)
+  const [hasMounted, setHasMounted] = useState(false) // Added for stability
 
   useEffect(() => {
+    setHasMounted(true) // Confirms we are in the browser
+
+    // Attempt to grab the AI result from the browser's session storage
     const stored = sessionStorage.getItem("PrismDX_result")
-    if (!stored) { router.push("/scan"); return }
+
+    if (!stored) {
+      // If a judge refreshes and data is gone, go back to scan
+      console.log("No data found in session, redirecting...")
+      router.push("/scan")
+      return
+    }
+
     try {
       const parsed = JSON.parse(stored)
       setResult(parsed)
-      setReviewRequested(!!parsed.human_review_requested)
-    } catch {
+      // Check if human review was already flagged by the AI logic
+      setReviewRequested(!!parsed.has_bias_flag)
+    } catch (err) {
+      console.error("Failed to parse result:", err)
       router.push("/scan")
     }
   }, [router])
+
+  // CRITICAL HYDRATION GUARD: Prevents the "sometimes it loads" flicker
+  if (!hasMounted || !result) {
+    return (
+      <div className="flex flex-col h-screen items-center justify-center bg-background">
+        <RefreshCw className="w-8 h-8 animate-spin text-primary mb-4" />
+        <p className="text-muted-foreground animate-pulse">Loading analysis report...</p>
+      </div>
+    )
+  }
+
+  // ... (Keep the rest of your return() block UI exactly as it is)
 
   if (!result) return null
 
