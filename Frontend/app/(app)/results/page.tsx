@@ -204,13 +204,11 @@ export default function ResultsPage() {
   const [hasMounted, setHasMounted] = useState(false) // Added for stability
 
   useEffect(() => {
-    setHasMounted(true) // Confirms we are in the browser
+    setHasMounted(true)
 
-    // Attempt to grab the AI result from the browser's session storage
     const stored = sessionStorage.getItem("PrismDX_result")
 
     if (!stored) {
-      // If a judge refreshes and data is gone, go back to scan
       console.log("No data found in session, redirecting...")
       router.push("/scan")
       return
@@ -219,8 +217,18 @@ export default function ResultsPage() {
     try {
       const parsed = JSON.parse(stored)
       setResult(parsed)
-      // Check if human review was already flagged by the AI logic
       setReviewRequested(!!parsed.has_bias_flag)
+
+      // ── Save to history (only for valid diagnosis results, not invalid images)
+      if (!parsed.__invalid_image) {
+        const history = JSON.parse(localStorage.getItem("PrismDX_history") || "[]")
+        const alreadySaved = history.some((e: any) => e.timestamp === parsed.timestamp)
+        if (!alreadySaved) {
+          const entry = { ...parsed, id: crypto.randomUUID() }
+          localStorage.setItem("PrismDX_history", JSON.stringify([entry, ...history]))
+        }
+      }
+
     } catch (err) {
       console.error("Failed to parse result:", err)
       router.push("/scan")
