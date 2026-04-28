@@ -304,9 +304,15 @@ export default function ResultsPage() {
     high: "bg-red-100 text-red-800 border-red-200",
   }
 
-  const formattedDate = diagnosisResult.timestamp
-    ? new Date(diagnosisResult.timestamp).toLocaleString()
-    : "Unknown date"
+  const formattedDate = (() => {
+    if (!diagnosisResult.timestamp) return "Unknown date"
+    const d = new Date(diagnosisResult.timestamp)
+    if (!isNaN(d.getTime())) return d.toLocaleString()
+    // Try parsing if it's a Unix timestamp (number as string)
+    const asNumber = Number(diagnosisResult.timestamp)
+    if (!isNaN(asNumber)) return new Date(asNumber * 1000).toLocaleString()
+    return diagnosisResult.timestamp // fallback: show raw value
+  })()
 
   return (
     <TooltipProvider>

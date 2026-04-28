@@ -309,7 +309,7 @@ async def run_scan(
         recommendations=recs,
         model_version=f"PrismDX v3.0.0 / {used_model}",
         analysis_time_ms=int((time.time() - start) * 1000),
-        timestamp=datetime.now(timezone.utc).isoformat() + "Z",
+        timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
     )
 
 @app.get("/health")
