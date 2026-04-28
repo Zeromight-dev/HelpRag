@@ -262,31 +262,52 @@ async def run_scan(
     except json.JSONDecodeError:
         raise HTTPException(status_code=502, detail="Failed to parse AI response.")
 
-    # ── Bias Evaluation ───────────────────────────────────────────────────────
+    # ── Bias Evaluation ───────────────────────────────────────────────
     baseline_data = BIAS_BASELINES[scan_type][fitzpatrick]
     raw_confidence = float(llm_data.get("confidence", 85))
     baseline_conf = float(baseline_data["baseline"])
     threshold = float(baseline_data["threshold"])
-    bias_risk_level = baseline_data["risk"]
+    base_risk_level = baseline_data["risk"]
 
-    adjusted_confidence = raw_confidence
-    if bias_risk_level == "high":
-        adjusted_confidence = min(raw_confidence, baseline_conf + 2)
-    elif bias_risk_level == "moderate":
-        adjusted_confidence = min(raw_confidence, baseline_conf + 5)
+    # Don't adjust confidence — evaluate it as-is
+    # Bias flag triggers when confidence is suspiciously HIGH
+    # for a demographic known to be underserved, OR suspiciously LOW
+    has_bias_flag = (
+        raw_confidence < threshold  # underconfident — classic bias
+        or (base_risk_level == "high" and raw_confidence > baseline_conf + 10)  # overconfident on high-risk group — also suspicious
+    )
 
-    has_bias_flag = adjusted_confidence < threshold
-    dev = round(adjusted_confidence - baseline_conf, 1)
+    # Deviation from baseline
+    dev = round(raw_confidence - baseline_conf, 1)
+
+    # Risk level — elevate if flagged on already high-risk group
+    if has_bias_flag and base_risk_level == "high":
+        bias_risk_level = "high"
+    elif has_bias_flag:
+        bias_risk_level = "moderate"
+    else:
+        bias_risk_level = base_risk_level
 
     if has_bias_flag:
-        bias_explanation = (
-            f"Confidence ({adjusted_confidence:.0f}%) is {abs(dev):.0f}% below baseline ({baseline_conf:.0f}%) for {fitz_label}. "
-            f"Published research suggests high potential for bias."
+        if raw_confidence < threshold:
+            bias_explanation = (
+            f"Confidence ({raw_confidence:.0f}%) is {abs(dev):.0f}% below the "
+            f"expected baseline ({baseline_conf:.0f}%) for {fitz_label}. "
+            f"Published research indicates elevated risk of diagnostic bias for this demographic."
+        )
+        else:
+            bias_explanation = (
+                f"Unusually high confidence ({raw_confidence:.0f}%) for {fitz_label}, "
+                f"which is a demographic historically underrepresented in training data. "
+                f"Result should be verified by a clinician."
         )
     else:
-        bias_explanation = f"Confidence within expected range for {fitz_label}."
+        bias_explanation = (
+            f"Confidence ({raw_confidence:.0f}%) is within the expected range "
+            f"for {fitz_label} (baseline: {baseline_conf:.0f}%). No bias flag triggered."
+        )
 
-    recs = (["Request human review due to bias flag."] if has_bias_flag else []) + llm_data.get("recommendations", [])
+    recs = (["Request human review due to potential demographic bias."] if has_bias_flag else []) + llm_data.get("recommendations", [])
 
     return DiagnosisResult(
         scan_type=scan_type,
@@ -298,7 +319,7 @@ async def run_scan(
         localization=localization,
         condition=llm_data.get("condition", "Unknown"),
         finding_detected=bool(llm_data.get("finding_detected", False)),
-        confidence=round(adjusted_confidence, 1),
+        confidence=round(raw_confidence, 1),
         diagnosis_summary=llm_data.get("diagnosis_summary", ""),
         key_observations=llm_data.get("key_observations", []),
         has_bias_flag=has_bias_flag,
